@@ -1,4 +1,6 @@
 # Ignore the .git folder and .vs folder
 .git/
 .vs/
+
+# Ignore the .env file
 .env

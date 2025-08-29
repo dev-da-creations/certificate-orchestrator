@@ -1,0 +1,3 @@
+# Ignore the .git folder and .vs folder
+.git/
+.vs/

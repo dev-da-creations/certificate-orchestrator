@@ -4,3 +4,6 @@
 
 # Ignore the .env file
 scripts/.env
+
+# Ignore the certificate orchestrator database folder
+certificate-orchestrator-database/  

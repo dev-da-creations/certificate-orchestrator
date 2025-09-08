@@ -7,14 +7,7 @@ from dotenv import load_dotenv
 
 
 class CertificateExpiryNotifier:
-    def __init__(
-        self,
-        db_connection_string,
-        smtp_server,
-        smtp_port,
-        email_username,
-        email_password,
-    ):
+    def __init__(self, db_connection_string, smtp_server, smtp_port, email_username, email_password):
         """
         Initialize the Certificate Expiry Notifier
 
@@ -44,71 +37,51 @@ class CertificateExpiryNotifier:
             return
 
         # Group certificates by owners and days until expiry
-        group_certificates_via_owners_and_days = (
-            self.grouping_certificates_via_owners_and_days(filtered_certs)
-        )
+        group_certificates_via_owners_and_days = (self.grouping_certificates_via_owners_and_days(filtered_certs))
 
         subject = "!! IMPORTANT !! : Certificate Expiration Notification"
         # Send emails to each grouped owner with their respective certificates
         for owner in group_certificates_via_owners_and_days:
-            if owner.__contains__("_Expired"):
-                email_body = self.create_email_body(
-                    group_certificates_via_owners_and_days[owner]
-                )
-                receivers = owner.replace("_Expired", "")
-                print(
-                    "Sending email to:",
-                    receivers,
-                    " whose certificates are already expired...\n",
-                )
+            if owner.__contains__("_exp30days"):
+                email_body = self.create_email_body(group_certificates_via_owners_and_days[owner])
+                receivers = owner.replace("_exp30days", "")
+                print("Sending email to:", receivers," whose certificates are already expired for 30 days...\n")
+                self.send_email(receivers, subject, email_body)
+
+            elif owner.__contains__("_exp14days"):
+                email_body = self.create_email_body(group_certificates_via_owners_and_days[owner])
+                receivers = owner.replace("_exp14days", "")
+                print("Sending email to:", receivers," whose certificates are already expired for 14 days...\n")
+                self.send_email(receivers, subject, email_body)
+
+            elif owner.__contains__("_exp7days"):
+                email_body = self.create_email_body(group_certificates_via_owners_and_days[owner])
+                receivers = owner.replace("_exp7days", "")
+                print("Sending email to:", receivers," whose certificates are already expired for 7 days...\n")
                 self.send_email(receivers, subject, email_body)
 
             elif owner.__contains__("_Today"):
-                email_body = self.create_email_body(
-                    group_certificates_via_owners_and_days[owner]
-                )
+                email_body = self.create_email_body(group_certificates_via_owners_and_days[owner])
                 receivers = owner.replace("_Today", "")
-                print(
-                    "Sending email to:",
-                    receivers,
-                    " whose certificates are expiring today...\n",
-                )
+                print("Sending email to:", receivers," whose certificates are expiring today...\n")
                 self.send_email(receivers, subject, email_body)
 
             elif owner.__contains__("_7days"):
-                email_body = self.create_email_body(
-                    group_certificates_via_owners_and_days[owner]
-                )
+                email_body = self.create_email_body(group_certificates_via_owners_and_days[owner])
                 receivers = owner.replace("_7days", "")
-                print(
-                    "Sending email to:",
-                    receivers,
-                    " whose certificates are expiring in 7 days...\n",
-                )
+                print("Sending email to:",receivers," whose certificates are expiring in 7 days...\n")
                 self.send_email(receivers, subject, email_body)
 
             elif owner.__contains__("_14days"):
-                email_body = self.create_email_body(
-                    group_certificates_via_owners_and_days[owner]
-                )
+                email_body = self.create_email_body(group_certificates_via_owners_and_days[owner])
                 receivers = owner.replace("_14days", "")
-                print(
-                    "Sending email to:",
-                    receivers,
-                    " whose certificates are expiring in 14 days...\n",
-                )
+                print("Sending email to:",receivers," whose certificates are expiring in 14 days...\n",)
                 self.send_email(receivers, subject, email_body)
 
             else:
-                email_body = self.create_email_body(
-                    group_certificates_via_owners_and_days[owner]
-                )
+                email_body = self.create_email_body(group_certificates_via_owners_and_days[owner])
                 receivers = owner.replace("_30days", "")
-                print(
-                    "Sending email to:",
-                    receivers,
-                    " whose certificates are expiring in 30 days...\n",
-                )
+                print("Sending email to:",receivers," whose certificates are expiring in 30 days...\n")
                 self.send_email(receivers, subject, email_body)
 
     def get_certificates_from_query(self):
@@ -116,24 +89,20 @@ class CertificateExpiryNotifier:
             conn = pyodbc.connect(self.db_connection_string)
             cursor = conn.cursor()
 
-            # Query to fetch certificates expiring in only next 30, 14, 7 days and already expired ones
+            # Query to fetch certificates expiring in only next 30, 14, 7 days and already expired ones for 7, 14, and 30 days
             query = """
                 SELECT [Certificate Name], [Issued To], [Issued By], [Issuing Date], [Expire date], [Type], 
                        [Owner], [Comment], [Active], DATEDIFF(day, GETDATE(), [Expire date])AS [Days Until Expiry]
                 FROM CLM_Table 
                 WHERE (
-                    DATEDIFF(day, GETDATE(), [Expire date]) IN (0, 7, 14, 30)
-                    OR DATEDIFF(day, GETDATE(), [Expire date]) < 0
+                    DATEDIFF(day, GETDATE(), [Expire date]) IN (-30, -14, -7, 0, 7, 14, 30)
                 ) AND [Active] = 'Yes'
                 """
             cursor.execute(query)
             expiring_certs = cursor.fetchall()
 
             # Convert to list of dictionaries for easier handling
-            result = [
-                dict(zip([column[0] for column in cursor.description], row))
-                for row in expiring_certs
-            ]
+            result = [dict(zip([column[0] for column in cursor.description], row)) for row in expiring_certs]
 
             conn.close()
 
@@ -150,11 +119,8 @@ class CertificateExpiryNotifier:
             Owner = cert.get("Owner").lower().replace(" ", "")
             Issued_To = cert.get("Issued To").lower().replace(" ", "")
 
-            # Check if Owner and Issued To are the same or similar and Days Until Expiry is in [7,14,30,0] or < 0
-            if (
-                cert.get("Days Until Expiry") in [7, 14, 30, 0]
-                or cert.get("Days Until Expiry") < 0
-            ):
+            # Check if Owner and Issued To are the same or similar and Days Until Expiry is in [7,14,30,0, -7, -14, -30]
+            if (cert.get("Days Until Expiry") in [7, 14, 30, 0, -7, -14, -30]):
                 if Owner == Issued_To:
                     receivers = Owner
                 elif Owner in Issued_To:
@@ -163,10 +129,13 @@ class CertificateExpiryNotifier:
                     receivers = Owner
                 else:
                     receivers = Owner + "," + Issued_To
-
                 # Add expiry category to receivers
-                if cert.get("Days Until Expiry") < 0:
-                    receivers += "_Expired"
+                if cert.get("Days Until Expiry") == -30:
+                    receivers += "_exp30days"
+                elif cert.get("Days Until Expiry") == -14:
+                    receivers += "_exp14days"
+                elif cert.get("Days Until Expiry") == -7:
+                    receivers += "_exp7days"
                 elif cert.get("Days Until Expiry") == 0:
                     receivers += "_Today"
                 elif cert.get("Days Until Expiry") == 7:
@@ -203,12 +172,12 @@ class CertificateExpiryNotifier:
 
         # Check if multiple certificates are present and adjust wording accordingly        
         if len(cert_data) > 1:
-            html_body += f"""s have <strong>expired</strong>."""
+            html_body += f"""s are <strong>expired/expiring</strong>."""
         else:
-            html_body += f""" has <strong>expired</strong>."""
+            html_body += f""" is <strong>expired/expiring</strong>."""
 
         html_body += f"""
-                    Please take immediate action to renew or replace"""
+                    Please take immediate action to renew"""
 
         # Check if multiple certificates are present and adjust wording accordingly
         if len(cert_data) > 1:
